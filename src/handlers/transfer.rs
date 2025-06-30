@@ -10,21 +10,32 @@ pub async fn send_sol(
     Json(req): Json<SendSolRequest>,
 ) -> (StatusCode, ResponseJson<ApiResponse<SolTransferData>>) {
     // Validate required fields
-    if req.from.is_empty() || req.to.is_empty() || req.lamports == 0 {
-        return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string())));
-    }
+    let from = match &req.from {
+        Some(val) if !val.is_empty() => val,
+        _ => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
+    };
+    
+    let to = match &req.to {
+        Some(val) if !val.is_empty() => val,
+        _ => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
+    };
+    
+    let lamports = match req.lamports {
+        Some(val) if val > 0 => val,
+        _ => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
+    };
 
-    let from = match parse_pubkey(&req.from) {
+    let from_pubkey = match parse_pubkey(from) {
         Ok(key) => key,
         Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
     };
     
-    let to = match parse_pubkey(&req.to) {
+    let to_pubkey = match parse_pubkey(to) {
         Ok(key) => key,
         Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
     };
 
-    let instruction = system_instruction::transfer(&from, &to, req.lamports);
+    let instruction = system_instruction::transfer(&from_pubkey, &to_pubkey, lamports);
 
     let response_data = SolTransferData {
         program_id: instruction.program_id.to_string(),
@@ -39,39 +50,51 @@ pub async fn send_token(
     Json(req): Json<SendTokenRequest>,
 ) -> (StatusCode, ResponseJson<ApiResponse<TokenTransferData>>) {
     // Validate required fields
-    if req.destination.is_empty() || req.mint.is_empty() || req.owner.is_empty() || req.amount == 0 {
-        return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string())));
-    }
+    let destination = match &req.destination {
+        Some(val) if !val.is_empty() => val,
+        _ => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
+    };
+    
+    let mint = match &req.mint {
+        Some(val) if !val.is_empty() => val,
+        _ => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
+    };
+    
+    let owner = match &req.owner {
+        Some(val) if !val.is_empty() => val,
+        _ => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
+    };
+    
+    let amount = match req.amount {
+        Some(val) if val > 0 => val,
+        _ => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
+    };
 
-    let mint = match parse_pubkey(&req.mint) {
+    let mint_pubkey = match parse_pubkey(mint) {
         Ok(key) => key,
         Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
     };
     
-    let owner = match parse_pubkey(&req.owner) {
+    let owner_pubkey = match parse_pubkey(owner) {
         Ok(key) => key,
         Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
     };
     
-    let destination = match parse_pubkey(&req.destination) {
+    let destination_pubkey = match parse_pubkey(destination) {
         Ok(key) => key,
         Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
     };
 
-    if req.amount == 0 {
-        return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Amount must be greater than 0".to_string())));
-    }
-
-    let source_ata = spl_associated_token_account::get_associated_token_address(&owner, &mint);
-    let dest_ata = spl_associated_token_account::get_associated_token_address(&destination, &mint);
+    let source_ata = spl_associated_token_account::get_associated_token_address(&owner_pubkey, &mint_pubkey);
+    let dest_ata = spl_associated_token_account::get_associated_token_address(&destination_pubkey, &mint_pubkey);
 
     let instruction = match token_instruction::transfer(
         &spl_token::id(),
         &source_ata,
         &dest_ata,
-        &owner,
+        &owner_pubkey,
         &[],
-        req.amount,
+        amount,
     ) {
         Ok(inst) => inst,
         Err(_) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Failed to create transfer instruction".to_string()))),
