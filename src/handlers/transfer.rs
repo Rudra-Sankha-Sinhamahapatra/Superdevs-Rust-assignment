@@ -8,17 +8,21 @@ use crate::utils::{parse_pubkey};
 
 pub async fn send_sol(
     Json(req): Json<SendSolRequest>,
-) -> Result<ResponseJson<ApiResponse<SolTransferData>>, StatusCode> {
-    let from = parse_pubkey(&req.from).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let to = parse_pubkey(&req.to).map_err(|_| StatusCode::BAD_REQUEST)?;
-
-    if req.lamports == 0 {
-        return Ok(ResponseJson(ApiResponse {
-            success: false,
-            data: None,
-            error: Some("Amount must be greater than 0".to_string()),
-        }));
+) -> (StatusCode, ResponseJson<ApiResponse<SolTransferData>>) {
+    // Validate required fields
+    if req.from.is_empty() || req.to.is_empty() || req.lamports == 0 {
+        return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string())));
     }
+
+    let from = match parse_pubkey(&req.from) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
+    
+    let to = match parse_pubkey(&req.to) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
 
     let instruction = system_instruction::transfer(&from, &to, req.lamports);
 
@@ -28,36 +32,50 @@ pub async fn send_sol(
         instruction_data: general_purpose::STANDARD.encode(&instruction.data),
     };
 
-    Ok(ResponseJson(ApiResponse::success(response_data)))
+    (StatusCode::OK, ResponseJson(ApiResponse::success(response_data)))
 }
 
 pub async fn send_token(
     Json(req): Json<SendTokenRequest>,
-) -> Result<ResponseJson<ApiResponse<TokenTransferData>>, StatusCode> {
-    let mint = parse_pubkey(&req.mint).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let owner = parse_pubkey(&req.owner).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let destination = parse_pubkey(&req.destination).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> (StatusCode, ResponseJson<ApiResponse<TokenTransferData>>) {
+    // Validate required fields
+    if req.destination.is_empty() || req.mint.is_empty() || req.owner.is_empty() || req.amount == 0 {
+        return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string())));
+    }
+
+    let mint = match parse_pubkey(&req.mint) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
+    
+    let owner = match parse_pubkey(&req.owner) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
+    
+    let destination = match parse_pubkey(&req.destination) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
 
     if req.amount == 0 {
-        return Ok(ResponseJson(ApiResponse {
-            success: false,
-            data: None,
-            error: Some("Amount must be greater than 0".to_string()),
-        }));
+        return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Amount must be greater than 0".to_string())));
     }
 
     let source_ata = spl_associated_token_account::get_associated_token_address(&owner, &mint);
     let dest_ata = spl_associated_token_account::get_associated_token_address(&destination, &mint);
 
-    let instruction = token_instruction::transfer(
+    let instruction = match token_instruction::transfer(
         &spl_token::id(),
         &source_ata,
         &dest_ata,
         &owner,
         &[],
         req.amount,
-    )
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ) {
+        Ok(inst) => inst,
+        Err(_) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Failed to create transfer instruction".to_string()))),
+    };
 
     let accounts = instruction
         .accounts
@@ -74,5 +92,5 @@ pub async fn send_token(
         instruction_data: general_purpose::STANDARD.encode(&instruction.data),
     };
 
-    Ok(ResponseJson(ApiResponse::success(response_data)))
+    (StatusCode::OK, ResponseJson(ApiResponse::success(response_data)))
 } 

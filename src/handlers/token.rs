@@ -6,42 +6,70 @@ use crate::utils::{instruction_to_response, parse_pubkey};
 
 pub async fn create_token(
     Json(req): Json<CreateTokenRequest>,
-) -> Result<ResponseJson<ApiResponse<InstructionData>>, StatusCode> {
-    let mint_authority = parse_pubkey(&req.mint_authority).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let mint = parse_pubkey(&req.mint).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> (StatusCode, ResponseJson<ApiResponse<InstructionData>>) {
+    // Validate required fields
+    if req.mint_authority.is_empty() || req.mint.is_empty() {
+        return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string())));
+    }
 
-    let instruction = token_instruction::initialize_mint(
+    let mint_authority = match parse_pubkey(&req.mint_authority) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
+    
+    let mint = match parse_pubkey(&req.mint) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
+
+    let instruction = match token_instruction::initialize_mint(
         &spl_token::id(),
         &mint,
         &mint_authority,
         Some(&mint_authority),
         req.decimals,
-    )
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ) {
+        Ok(inst) => inst,
+        Err(_) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Failed to create token instruction".to_string()))),
+    };
 
-    Ok(ResponseJson(ApiResponse::success(instruction_to_response(
-        instruction,
-    ))))
+    (StatusCode::OK, ResponseJson(ApiResponse::success(instruction_to_response(instruction))))
 }
 
 pub async fn mint_token(
     Json(req): Json<MintTokenRequest>,
-) -> Result<ResponseJson<ApiResponse<InstructionData>>, StatusCode> {
-    let mint = parse_pubkey(&req.mint).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let destination = parse_pubkey(&req.destination).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let authority = parse_pubkey(&req.authority).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> (StatusCode, ResponseJson<ApiResponse<InstructionData>>) {
+    // Validate required fields
+    if req.mint.is_empty() || req.destination.is_empty() || req.authority.is_empty() || req.amount == 0 {
+        return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string())));
+    }
 
-    let instruction = token_instruction::mint_to(
+    let mint = match parse_pubkey(&req.mint) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
+    
+    let destination = match parse_pubkey(&req.destination) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
+    
+    let authority = match parse_pubkey(&req.authority) {
+        Ok(key) => key,
+        Err(err) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error(err))),
+    };
+
+    let instruction = match token_instruction::mint_to(
         &spl_token::id(),
         &mint,
         &destination,
         &authority,
         &[],
         req.amount,
-    )
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ) {
+        Ok(inst) => inst,
+        Err(_) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Failed to create mint instruction".to_string()))),
+    };
 
-    Ok(ResponseJson(ApiResponse::success(instruction_to_response(
-        instruction,
-    ))))
+    (StatusCode::OK, ResponseJson(ApiResponse::success(instruction_to_response(instruction))))
 } 
