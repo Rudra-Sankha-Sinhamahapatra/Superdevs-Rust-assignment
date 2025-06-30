@@ -51,4 +51,25 @@ pub struct AccountInfo {
     pub pubkey: String,
     pub is_signer: bool,
     pub is_writable: bool,
+}
+
+#[derive(Serialize)]
+pub struct SolTransferData {
+    pub program_id: String,
+    pub accounts: Vec<String>,
+    pub instruction_data: String,
+}
+
+#[derive(Serialize)]
+pub struct TokenTransferData {
+    pub program_id: String,
+    pub accounts: Vec<TokenAccountInfo>,
+    pub instruction_data: String,
+}
+
+#[derive(Serialize)]
+pub struct TokenAccountInfo {
+    pub pubkey: String,
+    #[serde(rename = "isSigner")]
+    pub is_signer: bool,
 } 

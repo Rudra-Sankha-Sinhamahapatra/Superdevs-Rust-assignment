@@ -1,13 +1,14 @@
 use axum::{extract::Json, http::StatusCode, response::Json as ResponseJson};
+use base64::{Engine as _, engine::general_purpose};
 use solana_program::system_instruction;
 use spl_token::instruction as token_instruction;
 
-use crate::models::{ApiResponse, InstructionData, SendSolRequest, SendTokenRequest};
-use crate::utils::{instruction_to_response, parse_pubkey};
+use crate::models::{ApiResponse, SendSolRequest, SendTokenRequest, SolTransferData, TokenTransferData, TokenAccountInfo};
+use crate::utils::{parse_pubkey};
 
 pub async fn send_sol(
     Json(req): Json<SendSolRequest>,
-) -> Result<ResponseJson<ApiResponse<InstructionData>>, StatusCode> {
+) -> Result<ResponseJson<ApiResponse<SolTransferData>>, StatusCode> {
     let from = parse_pubkey(&req.from).map_err(|_| StatusCode::BAD_REQUEST)?;
     let to = parse_pubkey(&req.to).map_err(|_| StatusCode::BAD_REQUEST)?;
 
@@ -21,14 +22,18 @@ pub async fn send_sol(
 
     let instruction = system_instruction::transfer(&from, &to, req.lamports);
 
-    Ok(ResponseJson(ApiResponse::success(instruction_to_response(
-        instruction,
-    ))))
+    let response_data = SolTransferData {
+        program_id: instruction.program_id.to_string(),
+        accounts: instruction.accounts.iter().map(|acc| acc.pubkey.to_string()).collect(),
+        instruction_data: general_purpose::STANDARD.encode(&instruction.data),
+    };
+
+    Ok(ResponseJson(ApiResponse::success(response_data)))
 }
 
 pub async fn send_token(
     Json(req): Json<SendTokenRequest>,
-) -> Result<ResponseJson<ApiResponse<InstructionData>>, StatusCode> {
+) -> Result<ResponseJson<ApiResponse<TokenTransferData>>, StatusCode> {
     let mint = parse_pubkey(&req.mint).map_err(|_| StatusCode::BAD_REQUEST)?;
     let owner = parse_pubkey(&req.owner).map_err(|_| StatusCode::BAD_REQUEST)?;
     let destination = parse_pubkey(&req.destination).map_err(|_| StatusCode::BAD_REQUEST)?;
@@ -54,7 +59,20 @@ pub async fn send_token(
     )
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(ResponseJson(ApiResponse::success(instruction_to_response(
-        instruction,
-    ))))
+    let accounts = instruction
+        .accounts
+        .into_iter()
+        .map(|acc| TokenAccountInfo {
+            pubkey: acc.pubkey.to_string(),
+            is_signer: acc.is_signer,
+        })
+        .collect();
+
+    let response_data = TokenTransferData {
+        program_id: instruction.program_id.to_string(),
+        accounts,
+        instruction_data: general_purpose::STANDARD.encode(&instruction.data),
+    };
+
+    Ok(ResponseJson(ApiResponse::success(response_data)))
 } 
