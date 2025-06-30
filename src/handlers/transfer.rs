@@ -21,8 +21,9 @@ pub async fn send_sol(
     };
     
     let lamports = match req.lamports {
-        Some(val) if val > 0 => val,
-        _ => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
+        Some(0) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Amount must be greater than 0".to_string()))),
+        Some(val) => val,
+        None => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
     };
 
     let from_pubkey = match parse_pubkey(from) {
@@ -66,8 +67,9 @@ pub async fn send_token(
     };
     
     let amount = match req.amount {
-        Some(val) if val > 0 => val,
-        _ => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
+        Some(0) => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Amount must be greater than 0".to_string()))),
+        Some(val) => val,
+        None => return (StatusCode::BAD_REQUEST, ResponseJson(ApiResponse::error("Missing required fields".to_string()))),
     };
 
     let mint_pubkey = match parse_pubkey(mint) {
